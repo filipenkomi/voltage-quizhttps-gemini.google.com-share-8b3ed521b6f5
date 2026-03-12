@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тренажер: Тарифные уровни напряжения</title>
+    
+    <!-- Подключение библиотек React и Tailwind через CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-100 min-h-screen font-sans">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        // База знаний (25 арбитражных кейсов)
+        const QUESTIONS = [
+            {
+                id: 1, text: "Потребитель подключен к подстанции ТСО 110/10 кВ. Граница балансовой принадлежности (ГБП) установлена на наконечниках отходящего кабеля в ячейке 10 кВ данной подстанции. Кабель принадлежит потребителю. Какой тарифный уровень?",
+                diagram: [{ type: 'source', label: 'ПС 110/10 кВ', owner: 'ТСО' }, { type: 'cell', label: 'Ячейка 10 кВ', owner: 'ТСО' }, { type: 'gbp', label: 'ГБП' }, { type: 'line', label: 'КЛ 10 кВ', owner: 'Потребитель' }, { type: 'consumer', label: 'Завод', owner: 'Потребитель' }],
+                options: [{ text: "СН2 (по номиналу ячейки)", isCorrect: false }, { text: "ВН (по высшему напряжению ПС)", isCorrect: true }, { text: "СН1", isCorrect: false }],
+                explanation: "Классическое «правило высшего напряжения» (абз. 2 п. 29 Приказа ФАС № 426/22). Так как ГБП находится в РУ подстанции, применяется уровень питающего (высшего) напряжения этой подстанции — 110 кВ (ВН)."
+            },
+            {
+                id: 2, text: "То же самое подключение к ПС 110/10 кВ. Но от ячейки 10 кВ до территории завода идет кабельная линия длиной 50 метров, которая по документам принадлежит ТСО. ГБП установлена в кабельном киоске на территории завода. Какой уровень?",
+                diagram: [{ type: 'source', label: 'ПС 110/10', owner: 'ТСО' }, { type: 'cell', label: 'Ячейка 10', owner: 'ТСО' }, { type: 'line', label: 'КЛ ТСО (50м)', owner: 'ТСО' }, { type: 'gbp', label: 'ГБП' }, { type: 'consumer', label: 'Завод', owner: 'Потребитель' }],
+                options: [{ text: "ВН (ПС та же самая)", isCorrect: false }, { text: "СН2 (по номиналу в точке ГБП)", isCorrect: true }, { text: "НН", isCorrect: false }],
+                explanation: "Правило высшего напряжения СГОРАЕТ. Как только между РУ подстанции и ГБП появляется сеть ТСО, льгота отменяется. Применяется базовое правило по номиналу в точке ГБП — 10 кВ (СН2)."
+            },
+            {
+                id: 3, text: "Завод подключен кабелем напрямую к шинам 10 кВ ТЭЦ (генерация). Кабель принадлежит заводу. Оборудования ТСО между ними нет. Уровень напряжения?",
+                diagram: [{ type: 'source', label: 'ТЭЦ (Шины)', owner: 'Генерация' }, { type: 'gbp', label: 'ГБП' }, { type: 'line', label: 'КЛ 10 кВ', owner: 'Потребитель' }, { type: 'consumer', label: 'Завод', owner: 'Потребитель' }],
+                options: [{ text: "ГН (Генераторное)", isCorrect: true }, { text: "СН2", isCorrect: false }, { text: "ВН", isCorrect: false }],
+                explanation: "Присоединение непосредственно к шинам электростанции без участия объектов электросетевого хозяйства ТСО дает право на ГН (п. 44 ПП РФ № 1178)."
+            },
+            {
+                id: 4, text: "Завод подключен к ячейке 10 кВ на ТЭЦ. Но сама ячейка (РУ-10 кВ) была передана в аренду территориальной сетевой организации (ТСО). ГБП на контактах этой ячейки. Кабель завода. Уровень?",
+                diagram: [{ type: 'source', label: 'ТЭЦ', owner: 'Генерация' }, { type: 'cell', label: 'РУ 10 кВ', owner: 'ТСО (аренда)' }, { type: 'gbp', label: 'ГБП' }, { type: 'line', label: 'КЛ 10 кВ', owner: 'Потребитель' }, { type: 'consumer', label: 'Завод', owner: 'Потребитель' }],
+                options: [{ text: "ГН (территория генерации)", isCorrect: false }, { text: "СН2 (отсутствует право на ГН)", isCorrect: true }],
+                explanation: "Ячейка принадлежит ТСО (на праве аренды), присоединение идет через объекты ТСО. Право на ГН утрачивается. Номинал 10 кВ (СН2)."
+            },
+            {
+                id: 5, text: "Опосредованное присоединение. Торговый центр (ТЦ) подключен к ТСО на СН2. К сетям 0.4 кВ этого ТЦ подключен малый павильон. Как ТСО выставляет счет Сбыту за транзит до павильона?",
+                diagram: [{ type: 'source', label: 'Сеть ТСО', owner: 'ТСО' }, { type: 'line', label: 'КЛ 10 кВ', owner: 'ТЦ' }, { type: 'cell', label: 'ТП 10/0.4', owner: 'ТЦ' }, { type: 'gbp', label: 'ГБП' }, { type: 'consumer', label: 'Павильон', owner: 'Субпотребитель' }],
+                options: [{ text: "СН2 (по точке ТЦ)", isCorrect: false }, { text: "НН (по ГБП субпотребителя)", isCorrect: true }],
+                explanation: "Для субпотребителя уровень определяется в точке ЕГО присоединения к сетям основного потребителя. Здесь это 0.4 кВ = НН."
+            },
+            {
+                id: 6, text: "Потребитель подключен к подстанции 110/35/6 кВ. ГБП установлена в ячейке 6 кВ этой подстанции. Какое напряжение?",
+                diagram: [{ type: 'source', label: 'ПС 110/35/6', owner: 'ТСО' }, { type: 'cell', label: 'Ячейка 6 кВ', owner: 'ТСО' }, { type: 'gbp', label: 'ГБП' }, { type: 'consumer', label: 'ЭПУ', owner: 'Потребитель' }],
+                options: [{ text: "СН2 (6 кВ)", isCorrect: false }, { text: "ВН (110 кВ)", isCorrect: true }],
+                explanation: "Работает правило высшего напряжения. Питающее (входящее) напряжение данной ПС — 110 кВ. Итог: ВН."
+            },
+            {
+                id: 7, text: "Трансформатор 110/10 кВ принадлежит потребителю. ГБП на линейном портале 110 кВ. Прибор учета стоит на стороне 10 кВ. Уровень напряжения?",
+                diagram: [{ type: 'source', label: 'ВЛ 110 кВ', owner: 'ТСО' }, { type: 'gbp', label: 'ГБП' }, { type: 'cell', label: 'Тр-р 110/10', owner: 'Потребитель' }, { type: 'consumer', label: 'Цех', owner: 'Потребитель' }],
+                options: [{ text: "СН2 (по счетчику)", isCorrect: false }, { text: "ВН (по точке ГБП)", isCorrect: true }],
+                explanation: "Уровень напряжения ВСЕГДА определяется по точке ГБП, а не по месту установки прибора учета (п. 144 ПП РФ № 442)."
+            },
+            {
+                id: 8, text: "Металлургический комбинат напрямую подключен к магистральной подстанции 500/220/110 кВ ПАО «ФСК ЕЭС». ГБП на 220 кВ. Какой тариф?",
+                diagram: [{ type: 'source', label: 'ПС ФСК ЕЭС', owner: 'ФСК ЕЭС' }, { type: 'cell', label: 'РУ 220 кВ', owner: 'ФСК ЕЭС' }, { type: 'gbp', label: 'ГБП' }, { type: 'consumer', label: 'Завод', owner: 'Потребитель' }],
+                options: [{ text: "ВН", isCorrect: false }, { text: "Тариф по передаче по ЕНЭС (220 кВ)", isCorrect: true }],
+                explanation: "При прямом подключении к ЕНЭС (ФСК ЕЭС) применяется специализированный тариф, дифференцированный по напряжению (ст. 8 ФЗ-35)."
+            },
+            {
+                id: 9, text: "Два потребителя (А и Б) подключены к одной линии 10 кВ ТСО. У 'А' ГБП на опоре. У 'Б' Акт ТП утерян, но физически он на той же опоре. Какой тариф у Б?",
+                diagram: [{ type: 'source', label: 'ПС ТСО', owner: 'ТСО' }, { type: 'line', label: 'ВЛ 10 кВ', owner: 'ТСО' }, { type: 'gbp', label: 'Факт. врезка' }, { type: 'consumer', label: 'Потр. Б', owner: 'Б' }],
+                options: [{ text: "СН2 (по фактической границе)", isCorrect: true }, { text: "ВН (штраф за отсутствие акта)", isCorrect: false }],
+                explanation: "Согласно п. 15(2) ПНД (ПП РФ № 861), при отсутствии документов граница определяется по точке фактического присоединения ЭПУ."
+            },
+            {
+                id: 10, text: "Акт ТП составлен с ошибкой: указано подключение кабелем 6 кВ, но физически подается 10 кВ из-за реконструкции ПС. Как считать?",
+                options: [{ text: "СН2 (6 кВ по документам)", isCorrect: false }, { text: "СН2 (10 кВ по факту - тариф тот же)", isCorrect: true }],
+                explanation: "И 6 кВ, и 10 кВ попадают в один диапазон СН2 (от 1 до 20 кВ включительно)."
+            },
+            {
+                id: 11, text: "Временное присоединение строительной площадки. ГБП на 0.4 кВ. Влияет ли статус 'временного' на определение уровня напряжения?",
+                options: [{ text: "Нет, определяется только физической ГБП (НН)", isCorrect: true }, { text: "Да, для времянок применяется тариф СН2", isCorrect: false }],
+                explanation: "Статус 'временного' влияет на процедуру, но тарифный уровень определяется строго по физической ГБП (0.4 кВ = НН)."
+            },
+            {
+                id: 12, text: "Потребитель подключен к сетям 20 кВ (стандарт мегаполисов). К какому тарифному уровню относится сеть 20 кВ?",
+                options: [{ text: "СН1", isCorrect: false }, { text: "СН2", isCorrect: true }],
+                explanation: "Диапазон СН2 включает напряжения от 1 кВ до 20 кВ *включительно*."
+            },
+            {
+                id: 13, text: "На ПС ТСО 110/35/10 кВ потребитель 'Б' подключен в ячейку 10 кВ. Какой тариф?",
+                options: [{ text: "СН2 (10 кВ)", isCorrect: false }, { text: "ВН (высшее напряжение ПС - 110 кВ)", isCorrect: true }],
+                explanation: "Если подключение в ячейке, уровень определяется по ВЫСШЕМУ питающему напряжению подстанции (110 кВ)."
+            },
+            {
+                id: 14, text: "ГБП установлена ровно на напряжении 1 кВ (специфическое оборудование). Это НН или СН2?",
+                options: [{ text: "НН (до 1000 В)", isCorrect: false }, { text: "СН2 (от 1 кВ включительно)", isCorrect: true }],
+                explanation: "Уровень НН строго 'ниже 1 кВ'. Ровно 1 кВ попадает в нижнюю границу СН2."
+            },
+            {
+                id: 15, text: "Трансформатор 35/10 кВ потребителя запитан от ПС ТСО 110/35 кВ по линии 35 кВ ТСО. ГБП на контактах трансформатора. Тариф?",
+                diagram: [{ type: 'source', label: 'ПС 110/35', owner: 'ТСО' }, { type: 'line', label: 'ВЛ 35 кВ', owner: 'ТСО' }, { type: 'gbp', label: 'ГБП' }, { type: 'cell', label: 'Тр-р 35/10', owner: 'Потребитель' }],
+                options: [{ text: "ВН (ПС 110кВ)", isCorrect: false }, { text: "СН1 (номинал линии 35 кВ)", isCorrect: true }],
+                explanation: "Подключение не в ячейке (есть линия ТСО). Правило ВН не работает. Смотрим номинал в точке ГБП — это 35 кВ (СН1)."
+            },
+            {
+                id: 16, text: "Потребитель подключен к 'бесхозяйной' ТП 10/0.4 кВ, которую ТСО взяла в эксплуатацию. ГБП на 0.4 кВ. Уровень?",
+                options: [{ text: "СН2 (по точке врезки ТП в сеть)", isCorrect: false }, { text: "НН (ГБП с ТСО фактически на 0.4 кВ)", isCorrect: true }],
+                explanation: "ТСО обслуживает объект, значит он участвует в процессе передачи. ГБП фактически на 0.4 кВ (НН)."
+            },
+            {
+                id: 17, text: "У потребителя две точки поставки: Фидер 1 (ГБП в ячейке ПС 110/10 кВ) и Фидер 2 (ГБП на линии 10 кВ). Как применяются тарифы?",
+                options: [{ text: "Единый по высшему", isCorrect: false }, { text: "Раздельно: Ф1 по ВН, Ф2 по СН2", isCorrect: true }],
+                explanation: "Расчет осуществляется раздельно для каждой точки поставки в соответствии с ее индивидуальным уровнем напряжения."
+            },
+            {
+                id: 18, text: "Электростанция (ТЭЦ) потребляет из сети ТСО энергию на собственные нужды (ремонт). Линия 110 кВ. Уровень напряжения?",
+                options: [{ text: "ГН (статус электростанции)", isCorrect: false }, { text: "ВН (по фактическому присоединению)", isCorrect: true }],
+                explanation: "ТЭЦ выступает как обычный потребитель. ГН неприменимо. Номинал 110 кВ = ВН."
+            },
+            {
+                id: 19, text: "Торговый центр подключен к ПС 35/10 кВ. ГБП в ячейке 10 кВ. Высшее напряжение ПС - 35 кВ. Какой уровень?",
+                options: [{ text: "СН2 (10 кВ)", isCorrect: false }, { text: "СН1 (по высшему ПС - 35 кВ)", isCorrect: true }],
+                explanation: "Правило ячейки дает высшее напряжение подстанции (35 кВ = СН1)."
+            },
+            {
+                id: 20, text: "Опосредованное присоединение. Завод подключен по ВН. К нему на 10 кВ подключен субпотребитель. Тариф ТСО для субпотребителя?",
+                options: [{ text: "ВН (по основному)", isCorrect: false }, { text: "СН2 (по точке субпотребителя)", isCorrect: true }],
+                explanation: "Для субпотребителя важна ЕГО ГБП с основным потребителем (10 кВ = СН2)."
+            },
+            {
+                id: 21, text: "ГБП установлена на контактах РУ-10 кВ ветропарка (ВИЭ). Уровень напряжения?",
+                options: [{ text: "ГН", isCorrect: true }, { text: "СН2", isCorrect: false }],
+                explanation: "Объекты ВИЭ (ветропарки, СЭС) являются генерацией. Прямое подключение дает ГН."
+            },
+            {
+                id: 22, text: "Линия 110 кВ в совместной собственности двух ТСО (50/50). Потребитель на отпайке. Тариф?",
+                options: [{ text: "ВН", isCorrect: true }, { text: "СН1", isCorrect: false }],
+                explanation: "Форма собственности ТСО не меняет номинал сети. Точка врезки — 110 кВ (ВН)."
+            },
+            {
+                id: 23, text: "Потребитель арендует ячейку 10 кВ на ПС ТСО 110/10 кВ. Влияет ли аренда на правило высшего напряжения?",
+                options: [{ text: "Нет, правило ВН применяется", isCorrect: true }, { text: "Да, теряется право на ВН", isCorrect: false }],
+                explanation: "Право собственности/аренды в самом РУ ПС не лишает льготы. Питающее 110 кВ = ВН."
+            },
+            {
+                id: 24, text: "ПС ФСК ЕЭС 500/110/10 кВ. ТСО подключена на 110 кВ. Потребитель в ячейке 10 кВ. Какая сетевая оказывает услуги и по какому уровню?",
+                options: [{ text: "ФСК ЕЭС, тариф ЕНЭС", isCorrect: false }, { text: "ТСО, тариф ВН", isCorrect: true }],
+                explanation: "Потребитель 10 кВ оплачивает услуги 'котлодержателю' (ТСО). Для него эта ПС ФСК рассматривается как ПС ТСО, работает правило высшего питающего (110 кВ = ВН)."
+            },
+            {
+                id: 25, text: "Котельная подключена кабелем 0.4 кВ напрямую к трансформатору собственных нужд 10/0.4 кВ электростанции. Уровень напряжения?",
+                options: [{ text: "ГН (территория генерации)", isCorrect: true }, { text: "НН (т.к. 0.4 кВ)", isCorrect: false }],
+                explanation: "Так как ТСН принадлежит электростанции и сетей ТСО нет, применяется ГН (п. 44 ПП РФ № 1178)."
+            }
+        ];
+
+        // Компонент визуализации схемы
+        const SingleLineDiagram = ({ elements }) => {
+            return (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 my-6 overflow-x-auto">
+                    <div className="text-xs font-semibold text-slate-500 uppercase mb-4 tracking-wider text-center">Однолинейная схема</div>
+                    <div className="flex items-center justify-center min-w-max px-4">
+                        {elements.map((el, index) => {
+                            const isLast = index === elements.length - 1;
+                            
+                            if (el.type === 'gbp') {
+                                return (
+                                    <div key={index} className="flex flex-col items-center mx-2 relative">
+                                        <div className="h-16 w-1 border-l-4 border-dashed border-red-500 z-10 animate-pulse"></div>
+                                        <div className="absolute top-16 mt-2 bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1 rounded whitespace-nowrap">{el.label}</div>
+                                    </div>
+                                );
+                            }
+
+                            if (el.type === 'line') {
+                                return (
+                                    <div key={index} className="flex flex-col items-center mx-1 w-24">
+                                        <div className="text-[10px] text-slate-500 mb-1 font-medium text-center leading-tight h-6 flex items-end justify-center">{el.label}</div>
+                                        <div className={`h-1 w-full ${el.owner === 'ТСО' ? 'bg-blue-400' : 'bg-amber-400'}`}></div>
+                                        <div className="text-[9px] text-slate-400 mt-1 uppercase">{el.owner}</div>
+                                    </div>
+                                );
+                            }
+
+                            let icon = "🔲";
+                            let bgColor = "bg-white";
+                            let borderColor = "border-slate-300";
+
+                            if (el.type === 'source') { icon = "⚡"; bgColor = "bg-yellow-50"; borderColor = "border-yellow-400"; } 
+                            else if (el.type === 'cell') { icon = "🏭"; bgColor = "bg-slate-100"; borderColor = "border-slate-400"; } 
+                            else if (el.type === 'consumer') { icon = "🏢"; bgColor = "bg-emerald-50"; borderColor = "border-emerald-400"; }
+
+                            return (
+                                <React.Fragment key={index}>
+                                    <div className="flex flex-col items-center">
+                                        <div className={`w-14 h-14 rounded-lg border-2 ${borderColor} ${bgColor} flex flex-col items-center justify-center shadow-sm text-2xl relative z-20`}>
+                                            {icon}
+                                        </div>
+                                        <div className="text-xs font-bold text-slate-700 mt-2 text-center max-w-[80px] leading-tight">{el.label}</div>
+                                        <div className="text-[9px] text-slate-500 mt-0.5 max-w-[80px] text-center">{el.owner}</div>
+                                    </div>
+                                    {!isLast && elements[index+1].type !== 'line' && elements[index+1].type !== 'gbp' && (
+                                        <div className="w-8 h-1 bg-slate-300 mx-1"></div>
+                                    )}
+                                </React.Fragment>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
+        // Главный компонент приложения
+        const AdvancedVoltageQuiz = () => {
+            const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+            const [score, setScore] = useState(0);
+            const [selectedOptionIndex, setSelectedOptionIndex] = useState(null);
+            const [showExplanation, setShowExplanation] = useState(false);
+            const [isFinished, setIsFinished] = useState(false);
+
+            const currentQuestion = QUESTIONS[currentQuestionIndex];
+
+            const handleOptionSelect = (index) => {
+                if (showExplanation) return;
+                setSelectedOptionIndex(index);
+                setShowExplanation(true);
+                if (currentQuestion.options[index].isCorrect) setScore(score + 1);
+            };
+
+            const handleNext = () => {
+                if (currentQuestionIndex < QUESTIONS.length - 1) {
+                    setCurrentQuestionIndex(currentQuestionIndex + 1);
+                    setSelectedOptionIndex(null);
+                    setShowExplanation(false);
+                } else {
+                    setIsFinished(true);
+                }
+            };
+
+            const restartQuiz = () => {
+                setCurrentQuestionIndex(0);
+                setScore(0);
+                setSelectedOptionIndex(null);
+                setShowExplanation(false);
+                setIsFinished(false);
+            };
+
+            if (isFinished) {
+                const percentage = Math.round((score / QUESTIONS.length) * 100);
+                return (
+                    <div className="flex items-center justify-center p-4 min-h-screen">
+                        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-lg w-full text-center border-t-8 border-blue-600">
+                            <div className="text-6xl mb-6">🛡️</div>
+                            <h2 className="text-3xl font-bold text-slate-800 mb-2">Аттестация завершена</h2>
+                            <p className="text-slate-600 mb-6">Анализ сложных арбитражных прецедентов.</p>
+                            <div className="text-6xl font-extrabold text-blue-600 mb-2">{score} <span className="text-3xl text-slate-400">/ {QUESTIONS.length}</span></div>
+                            <div className="text-lg text-slate-500 font-medium mb-8 bg-slate-50 py-2 rounded-lg">Точность экспертизы: {percentage}%</div>
+                            <button onClick={restartQuiz} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-6 rounded-xl transition-all shadow-lg text-lg">
+                                🔄 Пройти симуляцию заново
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="py-10 px-4 flex justify-center">
+                    <div className="max-w-3xl w-full">
+                        <div className="bg-white rounded-2xl shadow-xl p-6 md:p-8">
+                            
+                            <div className="flex justify-between items-center border-b border-slate-100 pb-4 mb-6">
+                                <div className="flex flex-col">
+                                    <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">PRO-Тренинг</span>
+                                    <span className="text-sm font-semibold text-slate-400 mt-1">Кейс {currentQuestionIndex + 1} из {QUESTIONS.length}</span>
+                                </div>
+                                <div className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-xl font-bold border border-emerald-100">
+                                    ✅ {score} верных
+                                </div>
+                            </div>
+
+                            <div className="mb-6">
+                                <h3 className="text-xl md:text-2xl font-bold text-slate-800 leading-snug">{currentQuestion.text}</h3>
+                            </div>
+
+                            {currentQuestion.diagram && <SingleLineDiagram elements={currentQuestion.diagram} />}
+
+                            <div className="space-y-3 mb-8 mt-6">
+                                {currentQuestion.options.map((option, index) => {
+                                    let btnClass = "w-full text-left p-4 rounded-xl border-2 transition-all font-medium text-slate-700 bg-white hover:border-blue-400 hover:bg-blue-50 cursor-pointer";
+                                    if (showExplanation) {
+                                        if (option.isCorrect) btnClass = "w-full text-left p-4 rounded-xl border-2 border-emerald-500 bg-emerald-50 text-emerald-800 font-bold";
+                                        else if (index === selectedOptionIndex) btnClass = "w-full text-left p-4 rounded-xl border-2 border-red-500 bg-red-50 text-red-800 font-bold";
+                                        else btnClass = "w-full text-left p-4 rounded-xl border-2 border-slate-100 bg-slate-50 text-slate-400 font-medium opacity-60 cursor-not-allowed";
+                                    }
+                                    return (
+                                        <button key={index} onClick={() => handleOptionSelect(index)} disabled={showExplanation} className={btnClass}>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-lg">{option.text}</span>
+                                                {showExplanation && option.isCorrect && <span className="text-xl ml-4">✅</span>}
+                                                {showExplanation && index === selectedOptionIndex && !option.isCorrect && <span className="text-xl ml-4">❌</span>}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {showExplanation && (
+                                <div className={`p-5 rounded-xl flex items-start ${currentQuestion.options[selectedOptionIndex].isCorrect ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}`}>
+                                    <span className="text-2xl mr-3 mt-1">ℹ️</span>
+                                    <div>
+                                        <h4 className={`font-bold text-lg mb-2 ${currentQuestion.options[selectedOptionIndex].isCorrect ? 'text-emerald-900' : 'text-amber-900'}`}>Юридическое обоснование</h4>
+                                        <p className="text-slate-800 leading-relaxed">{currentQuestion.explanation}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex justify-end mt-8 border-t border-slate-100 pt-6">
+                                <button onClick={handleNext} disabled={!showExplanation} className={`flex items-center px-8 py-4 rounded-xl font-bold text-lg transition-all ${showExplanation ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
+                                    {currentQuestionIndex < QUESTIONS.length - 1 ? 'Следующий кейс ➡️' : 'Завершить ➡️'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<AdvancedVoltageQuiz />);
+    </script>
+</body>
+</html>
